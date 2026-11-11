@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>피타고라스 블록팡! (Pythagoras Block Pang)</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tone.js for Web Audio Sound Effects -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+  <!-- Canvas Confetti for Celebration -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Jua&family=Nunito:wght@700;800;900&display=swap');
+
+    body {
+      font-family: 'Jua', 'Nunito', sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+
+    /* 3D 젤리 블록 스타일링 */
+    .block-btn {
+      transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease, background-color 0.2s ease;
+    }
+    .block-btn:hover:not(:disabled) {
+      transform: translateY(-3px) scale(1.03);
+    }
+    .block-btn:active:not(:disabled) {
+      transform: translateY(2px) scale(0.97);
+    }
+
+    /* 선택된 블록 펄스 */
+    @keyframes pulse-selected {
+      0%, 100% { transform: scale(1.06); filter: brightness(1.1); }
+      50% { transform: scale(1.12); filter: brightness(1.25); }
+    }
+    .block-selected {
+      animation: pulse-selected 0.7s infinite alternate ease-in-out;
+      z-index: 10;
+    }
+
+    /* 성공 시 팡 터지는 애니메이션 */
+    @keyframes block-pop {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.3) rotate(15deg); opacity: 0.8; }
+      100% { transform: scale(0); opacity: 0; }
+    }
+    .block-pop-anim {
+      animation: block-pop 0.35s forwards cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    /* 위에서 떨어지는 리필 애니메이션 */
+    @keyframes drop-in {
+      0% { transform: translateY(-40px) scale(0.6); opacity: 0; }
+      70% { transform: translateY(6px) scale(1.05); opacity: 1; }
+      100% { transform: translateY(0) scale(1); opacity: 1; }
+    }
+    .block-drop-anim {
+      animation: drop-in 0.35s forwards cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    /* 오답 시 흔들림 애니메이션 */
+    @keyframes shake-wrong {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-8px) rotate(-3deg); }
+      40%, 80% { transform: translateX(8px) rotate(3deg); }
+    }
+    .shake-anim {
+      animation: shake-wrong 0.4s ease-in-out;
+    }
+
+    /* 부드러운 스크롤바 */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-950 text-white min-h-screen flex flex-col items-center justify-center p-3 sm:p-5 relative overflow-x-hidden">
+
+  <!-- 배경 장식용 피타고라스 정리 도형 요소들 -->
+  <div class="absolute inset-0 overflow-hidden pointer-events-none opacity-10">
+    <div class="absolute top-10 left-10 text-8xl font-black">a² + b² = c²</div>
+    <div class="absolute bottom-20 right-10 text-9xl font-black">3:4:5</div>
+    <div class="absolute top-1/2 left-5 w-48 h-48 border-4 border-dashed border-white rounded-xl rotate-12"></div>
+    <div class="absolute top-1/4 right-20 w-64 h-64 border-4 border-white rounded-full"></div>
+  </div>
+
+  <!-- 메인 게임 컨테이너 -->
+  <main class="w-full max-w-lg bg-slate-900/80 backdrop-blur-xl border border-white/20 rounded-3xl p-4 sm:p-6 shadow-2xl relative z-10 flex flex-col gap-4">
+    
+    <!-- 헤더 타이틀 및 상단 컨트롤 -->
+    <header class="flex items-center justify-between border-b border-white/10 pb-3">
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-black tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-rose-400 to-indigo-300 drop-shadow">
+          피타고라스 블록팡! ✨
+        </h1>
+        <p class="text-xs text-indigo-200/80 mt-0.5">중2 수학 피타고라스 수 3개를 찾아 팡팡 터뜨리자!</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="soundToggleBtn" class="bg-white/10 hover:bg-white/20 p-2.5 rounded-2xl text-lg transition border border-white/10" title="음향 온/오프">
+          🔊
+        </button>
+        <button id="ruleModalBtn" class="bg-indigo-600/60 hover:bg-indigo-500 p-2.5 rounded-2xl text-sm font-bold transition border border-indigo-400/30">
+          📜 공식표
+        </button>
+      </div>
+    </header>
+
+    <!-- 대시보드 : 타이머, 점수, 콤보 -->
+    <section class="grid grid-cols-3 gap-2 sm:gap-3 bg-slate-800/80 rounded-2xl p-3 border border-white/10 text-center shadow-inner">
+      <!-- 남은 시간 -->
+      <div class="flex flex-col items-center">
+        <span class="text-xs text-indigo-300 font-bold uppercase tracking-wider">남은 시간</span>
+        <span id="timerDisplay" class="text-xl sm:text-2xl font-black text-amber-300 font-mono tracking-tight mt-0.5">02:00</span>
+      </div>
+      <!-- 점수 -->
+      <div class="flex flex-col items-center border-x border-white/10">
+        <span class="text-xs text-indigo-300 font-bold uppercase tracking-wider">점수</span>
+        <span id="scoreDisplay" class="text-xl sm:text-2xl font-black text-emerald-400 font-mono mt-0.5">0</span>
+      </div>
+      <!-- 연속 콤보 -->
+      <div class="flex flex-col items-center">
+        <span class="text-xs text-indigo-300 font-bold uppercase tracking-wider">연속 콤보</span>
+        <div class="flex items-center gap-1 mt-0.5">
+          <span id="comboDisplay" class="text-xl sm:text-2xl font-black text-pink-400 font-mono">0</span>
+          <span id="comboBadge" class="hidden text-[10px] px-1.5 py-0.5 rounded-full bg-pink-500 font-bold text-white animate-bounce">x1.5</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 선택된 슬롯 3개 표시 창 -->
+    <section class="bg-indigo-950/60 border border-indigo-500/30 rounded-2xl p-2.5 flex flex-col items-center justify-center">
+      <div class="text-xs text-indigo-300 mb-1.5 font-bold flex items-center gap-1.5">
+        <span>선택한 블록 (3개 선택 시 자동 판정)</span>
+        <span id="evalStatus" class="text-xs px-2 py-0.5 rounded-md bg-white/10 text-yellow-300 font-bold">블록을 터치하세요!</span>
+      </div>
+      <div class="flex items-center justify-center gap-3 w-full">
+        <div id="slot-0" class="w-14 h-14 sm:w-16 sm:h-16 rounded-xl border-2 border-dashed border-indigo-400/40 bg-indigo-900/40 flex items-center justify-center text-2xl font-black shadow-inner"></div>
+        <div id="slot-1" class="w-14 h-14 sm:w-16 sm:h-16 rounded-xl border-2 border-dashed border-indigo-400/40 bg-indigo-900/40 flex items-center justify-center text-2xl font-black shadow-inner"></div>
+        <div id="slot-2" class="w-14 h-14 sm:w-16 sm:h-16 rounded-xl border-2 border-dashed border-indigo-400/40 bg-indigo-900/40 flex items-center justify-center text-2xl font-black shadow-inner"></div>
+      </div>
+    </section>
+
+    <!-- 5x5 게임 블록 보드 -->
+    <section class="relative aspect-square w-full bg-slate-950/70 p-2 sm:p-2.5 rounded-2xl border border-white/15 shadow-2xl flex items-center justify-center">
+      <div id="gameBoard" class="grid grid-cols-5 grid-rows-5 gap-1.5 sm:gap-2 w-full h-full">
+        <!-- 25개 버튼 동적 렌더링 -->
+      </div>
+
+      <!-- 플로팅 알림 배너 (정답/오답 효과) -->
+      <div id="feedbackBanner" class="absolute pointer-events-none transition-all duration-300 transform opacity-0 scale-75 px-5 py-2.5 rounded-2xl font-black text-lg sm:text-xl shadow-2xl flex items-center gap-2">
+      </div>
+    </section>
+
+    <!-- 하단 유틸리티 버튼 (힌트 & 셔플 & 랭킹 열기) -->
+    <footer class="flex items-center justify-between gap-2 pt-1">
+      <button id="hintBtn" class="flex-1 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 active:scale-95 text-slate-900 font-extrabold py-2.5 px-3 rounded-2xl text-sm transition shadow-lg flex items-center justify-center gap-1.5 border border-amber-300/40">
+        <span>💡 힌트</span>
+        <span id="hintCountBadge" class="bg-slate-900 text-yellow-300 text-xs px-1.5 py-0.5 rounded-full font-mono">3</span>
+      </button>
+
+      <button id="shuffleBtn" class="flex-1 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 active:scale-95 text-white font-extrabold py-2.5 px-3 rounded-2xl text-sm transition shadow-lg flex items-center justify-center gap-1.5 border border-teal-300/30">
+        <span>🔀 셔플</span>
+        <span id="shuffleCountBadge" class="bg-slate-900/60 text-white text-xs px-1.5 py-0.5 rounded-full font-mono">2</span>
+      </button>
+
+      <button id="showLeaderboardBtn" class="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 active:scale-95 text-white font-extrabold py-2.5 px-3 rounded-2xl text-sm transition shadow-lg flex items-center justify-center gap-1.5 border border-purple-300/30">
+        <span>🏆 명예의 전당</span>
+      </button>
+    </footer>
+
+  </main>
+
+  <!-- ================= 모달 1 : 게임 시작 오버레이 ================= -->
+  <div id="startModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-white/20 rounded-3xl p-6 sm:p-8 max-w-md w-full text-center shadow-2xl relative">
+      <div class="text-5xl mb-3 animate-bounce">📐💥</div>
+      <h2 class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-rose-300 to-cyan-300 mb-2">
+        피타고라스 블록팡!
+      </h2>
+      <p class="text-sm text-indigo-200 mb-5 leading-relaxed">
+        선택한 3개의 숫자 블록이 직각삼각형 공식<br>
+        <span class="text-amber-300 font-extrabold text-base bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-500/30">a² + b² = c²</span>을 만족하면 팡! 터집니다.
+      </p>
+
+      <div class="bg-indigo-950/80 p-3.5 rounded-2xl border border-indigo-400/30 text-left text-xs space-y-1.5 text-indigo-100 mb-6">
+        <p class="font-bold text-amber-300 text-sm">🎮 게임 룰 요약:</p>
+        <p>• <b>제한 시간:</b> 2분 (120초 - 팡팡 스피드런!)</p>
+        <p>• <b>선택:</b> 3개의 블록을 클릭 (순서 상관없이 자동 판정)</p>
+        <p>• <b>점수:</b> 기본 100점 + 연속 콤보 보너스 (최대 3배!)</p>
+        <p>• <b>실패:</b> 오답 시 -50점 및 콤보 초기화</p>
+        <p>• <b>정답 팡팡:</b> 보드에 정답 조합이 풍성하게 등장합니다!</p>
+      </div>
+
+      <button id="startGameBtn" class="w-full py-4 rounded-2xl bg-gradient-to-r from-pink-500 via-rose-500 to-amber-500 hover:from-pink-400 hover:to-amber-400 active:scale-95 text-white text-xl font-black shadow-xl tracking-wider border border-white/30 transition transform">
+        🚀 게임 시작하기!
+      </button>
+    </div>
+  </div>
+
+  <!-- ================= 모달 2 : 게임 오버 & 명예의 전당 등록 모달 ================= -->
+  <div id="gameOverModal" class="hidden fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-amber-500/40 rounded-3xl p-6 sm:p-7 max-w-md w-full text-center shadow-2xl relative">
+      <div class="text-5xl mb-2">⏰ 깃발 휘날리기!</div>
+      <h2 class="text-2xl sm:text-3xl font-black text-amber-300 mb-1">TIME OVER!</h2>
+      <p class="text-xs text-indigo-200 mb-4">2분간의 직각삼각형 챌린지가 끝났습니다.</p>
+
+      <!-- 최종 점수 현황 카드 -->
+      <div class="bg-indigo-950/80 border border-white/10 rounded-2xl p-4 mb-5 space-y-2">
+        <div class="text-xs text-indigo-300 font-bold uppercase tracking-wider">최종 점수</div>
+        <div id="finalScoreVal" class="text-4xl font-black text-emerald-400 font-mono tracking-tight">0 점</div>
+        <div class="flex justify-around pt-2 border-t border-white/10 text-xs text-indigo-200">
+          <div>맞춘 조합: <span id="finalMatchCount" class="font-bold text-amber-300 font-mono text-sm">0</span>회</div>
+          <div>최고 콤보: <span id="finalMaxCombo" class="font-bold text-pink-400 font-mono text-sm">0</span>연속</div>
+        </div>
+      </div>
+
+      <!-- 닉네임 입력 폼 -->
+      <div class="mb-5 text-left">
+        <label for="nicknameInput" class="block text-xs font-bold text-indigo-300 mb-1.5 ml-1">
+          🏆 명예의 전당에 이름 올리기
+        </label>
+        <div class="flex gap-2">
+          <input type="text" id="nicknameInput" maxlength="10" placeholder="닉네임 입력 (최대 10자)" 
+                 class="flex-1 bg-slate-800 border border-indigo-400/50 rounded-xl px-3 py-2.5 text-white font-bold placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400">
+          <button id="saveScoreBtn" class="bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-900 font-black px-4 rounded-xl text-sm whitespace-nowrap transition shadow">
+            등록
+          </button>
+        </div>
+        <p id="saveMsg" class="text-[11px] text-emerald-400 mt-1.5 ml-1 hidden">등록되었습니다! 🎉</p>
+      </div>
+
+      <div class="flex gap-2">
+        <button id="openLeaderboardFromOverBtn" class="flex-1 py-3 rounded-xl bg-purple-600/80 hover:bg-purple-500 text-white font-bold text-sm transition">
+          🏆 랭킹 보기
+        </button>
+        <button id="restartGameBtn" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 text-white font-black text-sm transition shadow-lg">
+          🔄 다시 도전!
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 모달 3 : 명예의 전당 (Leaderboard) 모달 ================= -->
+  <div id="leaderboardModal" class="hidden fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-white/20 rounded-3xl p-6 max-w-md w-full shadow-2xl relative flex flex-col max-h-[85vh]">
+      <div class="flex items-center justify-between pb-3 border-b border-white/10">
+        <h3 class="text-xl font-black text-amber-300 flex items-center gap-2">
+          <span>🏆</span> 명예의 전당 TOP 10
+        </h3>
+        <button id="closeLeaderboardBtn" class="text-slate-400 hover:text-white text-2xl font-black leading-none">&times;</button>
+      </div>
+
+      <p class="text-xs text-indigo-200 mt-2 mb-3">피타고라스 정리 마스터들의 순위표입니다.</p>
+
+      <!-- 랭킹 리스트 컨테이너 -->
+      <div id="leaderboardList" class="flex-1 overflow-y-auto space-y-2 pr-1 my-1">
+        <!-- 동적 삽입 -->
+      </div>
+
+      <div class="pt-3 border-t border-white/10 mt-3 flex justify-between items-center">
+        <button id="resetLeaderboardBtn" class="text-xs text-rose-400/80 hover:text-rose-300 underline">
+          기록 초기화
+        </button>
+        <button id="closeLeaderboardBtnBottom" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition">
+          닫기
+        </button>
+      </div>
+      <div id="resetConfirmBox" class="hidden mt-2 p-2 bg-rose-950/80 border border-rose-500/40 rounded-xl text-center">
+        <p class="text-xs text-rose-200 mb-2">정말 모든 기록을 초기화하시겠습니까?</p>
+        <div class="flex justify-center gap-2">
+          <button id="confirmResetBtn" class="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold">초기화</button>
+          <button id="cancelResetBtn" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold">취소</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 모달 4 : 피타고라스의 수 8조합 공식표 모달 ================= -->
+  <div id="ruleModal" class="hidden fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-indigo-400/30 rounded-3xl p-6 max-w-md w-full shadow-2xl relative">
+      <div class="flex items-center justify-between pb-3 border-b border-white/10">
+        <h3 class="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-indigo-300 flex items-center gap-2">
+          <span>📜</span> 피타고라스의 수 5가지 조합
+        </h3>
+        <button id="closeRuleModalBtn" class="text-slate-400 hover:text-white text-2xl font-black leading-none">&times;</button>
+      </div>
+
+      <p class="text-xs text-indigo-200 mt-2 mb-4">
+        게임에 등장하는 5가지 핵심 조합 ($a^2 + b^2 = c^2$)과 사용 숫자들입니다:
+      </p>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono font-bold text-indigo-100 mb-4">
+        <div class="p-2.5 rounded-xl bg-slate-800 border border-white/10 flex items-center justify-between">
+          <span>1. (3, 4, 5)</span>
+          <span class="text-[10px] text-amber-300">9+16=25</span>
+        </div>
+        <div class="p-2.5 rounded-xl bg-slate-800 border border-white/10 flex items-center justify-between">
+          <span>2. (5, 12, 13)</span>
+          <span class="text-[10px] text-amber-300">25+144=169</span>
+        </div>
+        <div class="p-2.5 rounded-xl bg-slate-800 border border-white/10 flex items-center justify-between">
+          <span>3. (6, 8, 10)</span>
+          <span class="text-[10px] text-amber-300">36+64=100</span>
+        </div>
+        <div class="p-2.5 rounded-xl bg-slate-800 border border-white/10 flex items-center justify-between">
+          <span>4. (8, 15, 17)</span>
+          <span class="text-[10px] text-amber-300">64+225=289</span>
+        </div>
+        <div class="p-2.5 rounded-xl bg-slate-800 border border-white/10 flex items-center justify-between sm:col-span-2">
+          <span>5. (7, 24, 25)</span>
+          <span class="text-[10px] text-amber-300">49+576=625</span>
+        </div>
+      </div>
+
+      <div class="bg-indigo-950/60 p-3 rounded-xl border border-indigo-500/20 text-xs text-indigo-200 leading-relaxed mb-4">
+        💡 <b>Tip:</b> 가장 긴 변이 빗변($c$)입니다. 클릭 순서는 상관없으며 세 숫자만 정확히 고르면 자동으로 판정됩니다!
+      </div>
+
+      <button id="closeRuleModalBtnBottom" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition">
+        확인하고 게임하기
+      </button>
+    </div>
+  </div>
+
+  <!-- JavaScript 핵심 로직 -->
+  <script>
+    /* ==========================================================
+       1. 문제 정의 및 상수 설정
+       선택된 핵심 5가지 피타고라스 조합:
+       (3, 4, 5), (5, 12, 13), (6, 8, 10), (8, 15, 17), (7, 24, 25)
+       ========================================================== */
+    const PYTHAGOREAN_TRIPLETS = [
+      [3, 4, 5],
+      [5, 12, 13],
+      [6, 8, 10],
+      [8, 15, 17],
+      [7, 24, 25]
+    ];
+
+    // 등장하는 고유 숫자 집합 (이 숫자들만 사용됨)
+    // [3, 4, 5, 6, 7, 8, 10, 12, 13, 15, 17, 24, 25]
+    const VALID_NUMBERS = Array.from(new Set(PYTHAGOREAN_TRIPLETS.flat())).sort((a, b) => a - b);
+
+    // 각 숫자에 부여할 블록 테마 색상 (시각적 다양성과 가독성 제공)
+    const NUMBER_STYLES = {
+      3: 'from-amber-500 to-orange-600 text-amber-100 shadow-amber-900/50',
+      4: 'from-orange-500 to-red-600 text-orange-100 shadow-orange-900/50',
+      5: 'from-emerald-500 to-teal-600 text-emerald-100 shadow-emerald-900/50',
+      6: 'from-teal-500 to-cyan-600 text-teal-100 shadow-cyan-900/50',
+      7: 'from-cyan-500 to-blue-600 text-cyan-100 shadow-cyan-900/50',
+      8: 'from-blue-500 to-indigo-600 text-blue-100 shadow-blue-900/50',
+      10: 'from-violet-500 to-purple-600 text-violet-100 shadow-violet-900/50',
+      12: 'from-purple-500 to-fuchsia-600 text-purple-100 shadow-purple-900/50',
+      13: 'from-fuchsia-500 to-pink-600 text-fuchsia-100 shadow-fuchsia-900/50',
+      15: 'from-pink-500 to-rose-600 text-pink-100 shadow-rose-900/50',
+      17: 'from-rose-500 to-red-600 text-rose-100 shadow-rose-900/50',
+      24: 'from-lime-500 to-emerald-600 text-lime-100 shadow-lime-900/50',
+      25: 'from-sky-500 to-indigo-600 text-sky-100 shadow-sky-900/50'
+    };
+
+    const BOARD_SIZE = 25; // 5 x 5 격자
+    const GAME_DURATION = 120; // 2분 = 120초
+
+    /* ==========================================================
+       2. 게임 상태 관리 변수
+       ========================================================== */
+    let board = [];            // 길이 25 배열 { id, value }
+    let selectedIndices = [];  // 유저가 선택한 인덱스 (최대 3개)
+    let score = 0;
+    let combo = 0;
+    let maxCombo = 0;
+    let matchCount = 0;
+    let timeLeft = GAME_DURATION;
+    let timerInterval = null;
+    let isGameRunning = false;
+    let hintCount = 3;
+    let shuffleCount = 2;
+    let isProcessing = false;  // 판정 중 다중 클릭 방지
+    let soundEnabled = true;
+
+    /* ==========================================================
+       3. Web Audio (Tone.js) 사운드 효과
+       ========================================================== */
+    let synths = {
+      click: null,
+      success: null,
+      combo: null,
+      error: null,
+      fanfare: null
+    };
+
+    function initAudio() {
+      if (synths.click) return;
+      try {
+        synths.click = new Tone.MembraneSynth({ volume: -10 }).toDestination();
+        synths.success = new Tone.PolySynth(Tone.Synth, {
+          volume: -8,
+          envelope: { attack: 0.02, decay: 0.1, sustain: 0.2, release: 0.4 }
+        }).toDestination();
+        synths.combo = new Tone.PolySynth(Tone.Synth, {
+          volume: -6,
+          envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.6 }
+        }).toDestination();
+        synths.error = new Tone.Synth({
+          oscillator: { type: 'sawtooth' },
+          envelope: { attack: 0.01, decay: 0.2, sustain: 0.0, release: 0.1 },
+          volume: -8
+        }).toDestination();
+      } catch (e) {
+        console.warn('Audio Init Warning:', e);
+      }
+    }
+
+    function playSound(type) {
+      if (!soundEnabled) return;
+      try {
+        if (Tone.context.state !== 'running') {
+          Tone.start();
+        }
+        initAudio();
+        const now = Tone.now();
+        if (type === 'click' && synths.click) {
+          synths.click.triggerAttackRelease('C3', '8n', now);
+        } else if (type === 'success' && synths.success) {
+          synths.success.triggerAttackRelease(['C5', 'E5', 'G5', 'C6'], '16n', now);
+        } else if (type === 'combo' && synths.combo) {
+          synths.combo.triggerAttackRelease(['E5', 'G#5', 'B5', 'E6'], '12n', now);
+        } else if (type === 'error' && synths.error) {
+          synths.error.triggerAttackRelease('F#2', '16n', now);
+        }
+      } catch (err) {
+        // 무음 대응
+      }
+    }
+
+    /* ==========================================================
+       4. 유틸리티 & 검증 함수
+       ========================================================== */
+    // 랜덤 요소 선택
+    function getRandomElement(arr) {
+      return arr[Math.floor(Math.random() * arr.length)];
+    }
+
+    // 세 숫자가 8개 피타고라스 조합 중 하나인지 검사 (정렬 후 매칭)
+    function checkPythagorean(a, b, c) {
+      const sorted = [a, b, c].sort((x, y) => x - y);
+      return PYTHAGOREAN_TRIPLETS.some(trip => 
+        trip[0] === sorted[0] && trip[1] === sorted[1] && trip[2] === sorted[2]
+      );
+    }
+
+    // 현재 보드 위에 완성 가능한 조합이 적어도 1개 존재하는지 탐색
+    function findPossibleTripletsOnBoard() {
+      const currentValues = board.map(cell => cell.value);
+      const valCounts = {};
+      currentValues.forEach(v => { valCounts[v] = (valCounts[v] || 0) + 1; });
+
+      const matches = [];
+      for (const trip of PYTHAGOREAN_TRIPLETS) {
+        const tempCounts = { ...valCounts };
+        let canForm = true;
+        for (const num of trip) {
+          if (!tempCounts[num] || tempCounts[num] <= 0) {
+            canForm = false;
+            break;
+          }
+          tempCounts[num]--;
+        }
+        if (canForm) {
+          matches.push(trip);
+        }
+      }
+      return matches;
+    }
+
+    /* ==========================================================
+       5. 보드 생성 및 채우기
+       ========================================================== */
+    // 보드에 최소 4쌍 이상의 정답 세트를 듬뿍 배치하여 누를 수 있는 선택지를 극대화
+    function generateBoard() {
+      let newValues = [];
+
+      // 1) 최소 4~5쌍의 피타고라스 정답 세트를 기본 배치 (12~15칸 차지)
+      for (let k = 0; k < 5; k++) {
+        const trip = getRandomElement(PYTHAGOREAN_TRIPLETS);
+        newValues.push(...trip);
+      }
+
+      // 2) 가장 자주 쓰이는 핵심 숫자(3,4,5, 6,8,10, 5,12,13) 위주로 나머지 10칸 채우기
+      const popularNumbers = [3, 4, 5, 5, 12, 13, 6, 8, 10, 3, 4, 5];
+      while (newValues.length < BOARD_SIZE) {
+        newValues.push(getRandomElement(popularNumbers));
+      }
+      newValues = newValues.slice(0, BOARD_SIZE);
+
+      // 3) 피셔-예이츠 셔플
+      for (let i = newValues.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newValues[i], newValues[j]] = [newValues[j], newValues[i]];
+      }
+
+      board = newValues.map((val, idx) => ({
+        id: 'blk_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substr(2, 4),
+        value: val
+      }));
+
+      // 최소 3개 이상의 가능한 조합이 보장될 때까지 점검
+      if (findPossibleTripletsOnBoard().length < 3) {
+        generateBoard();
+      }
+    }
+
+    /* ==========================================================
+       6. DOM 렌더링
+       ========================================================== */
+    const gameBoardEl = document.getElementById('gameBoard');
+    const timerDisplayEl = document.getElementById('timerDisplay');
+    const scoreDisplayEl = document.getElementById('scoreDisplay');
+    const comboDisplayEl = document.getElementById('comboDisplay');
+    const comboBadgeEl = document.getElementById('comboBadge');
+    const evalStatusEl = document.getElementById('evalStatus');
+    const feedbackBannerEl = document.getElementById('feedbackBanner');
+    const hintCountBadgeEl = document.getElementById('hintCountBadge');
+    const shuffleCountBadgeEl = document.getElementById('shuffleCountBadge');
+
+    function renderBoard(animateIndices = []) {
+      gameBoardEl.innerHTML = '';
+      board.forEach((cell, idx) => {
+        const btn = document.createElement('button');
+        const styleGradient = NUMBER_STYLES[cell.value] || 'from-indigo-600 to-indigo-800 text-white';
+        const isSelected = selectedIndices.includes(idx);
+
+        btn.className = `block-btn relative flex items-center justify-center rounded-2xl font-black text-xl sm:text-2xl 
+                         bg-gradient-to-b ${styleGradient} shadow-md border-2 
+                         ${isSelected ? 'border-amber-300 ring-4 ring-amber-400/50 block-selected' : 'border-white/20'} 
+                         active:scale-95 disabled:cursor-not-allowed select-none`;
+
+        btn.dataset.index = idx;
+        btn.textContent = cell.value;
+
+        // 드롭 애니메이션
+        if (animateIndices.includes(idx)) {
+          btn.classList.add('block-drop-anim');
+        }
+
+        btn.addEventListener('click', () => handleBlockClick(idx));
+        gameBoardEl.appendChild(btn);
+      });
+
+      renderSlots();
+    }
+
+    function renderSlots() {
+      for (let i = 0; i < 3; i++) {
+        const slotEl = document.getElementById(`slot-${i}`);
+        if (i < selectedIndices.length) {
+          const val = board[selectedIndices[i]].value;
+          slotEl.textContent = val;
+          slotEl.className = 'w-14 h-14 sm:w-16 sm:h-16 rounded-xl border-2 border-amber-300 bg-amber-500/20 text-amber-300 flex items-center justify-center text-2xl font-black shadow-lg transform scale-105 transition';
+        } else {
+          slotEl.textContent = '';
+          slotEl.className = 'w-14 h-14 sm:w-16 sm:h-16 rounded-xl border-2 border-dashed border-indigo-400/40 bg-indigo-900/40 flex items-center justify-center text-2xl font-black shadow-inner';
+        }
+      }
+
+      if (selectedIndices.length === 0) {
+        evalStatusEl.textContent = '블록 3개를 선택하세요';
+        evalStatusEl.className = 'text-xs px-2 py-0.5 rounded-md bg-white/10 text-yellow-300 font-bold';
+      } else if (selectedIndices.length < 3) {
+        evalStatusEl.textContent = `${3 - selectedIndices.length}개 더 선택하세요`;
+        evalStatusEl.className = 'text-xs px-2 py-0.5 rounded-md bg-indigo-500/30 text-indigo-200 font-bold';
+      } else {
+        evalStatusEl.textContent = '판정 중...';
+        evalStatusEl.className = 'text-xs px-2 py-0.5 rounded-md bg-yellow-500/40 text-yellow-200 font-bold';
+      }
+    }
+
+    function updateDashboard() {
+      // 시간 표기 mm:ss
+      const mins = Math.floor(timeLeft / 60);
+      const secs = timeLeft % 60;
+      timerDisplayEl.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      if (timeLeft <= 30) {
+        timerDisplayEl.classList.add('text-rose-400', 'animate-pulse');
+        timerDisplayEl.classList.remove('text-amber-300');
+      } else {
+        timerDisplayEl.classList.remove('text-rose-400', 'animate-pulse');
+        timerDisplayEl.classList.add('text-amber-300');
+      }
+
+      // 점수 및 콤보
+      scoreDisplayEl.textContent = score.toLocaleString();
+      comboDisplayEl.textContent = combo;
+
+      if (combo >= 2) {
+        comboBadgeEl.classList.remove('hidden');
+        const multiplier = Math.min(3, 1 + combo * 0.2).toFixed(1);
+        comboBadgeEl.textContent = `x${multiplier}`;
+      } else {
+        comboBadgeEl.classList.add('hidden');
+      }
+
+      hintCountBadgeEl.textContent = hintCount;
+      shuffleCountBadgeEl.textContent = shuffleCount;
+    }
+
+    /* ==========================================================
+       7. 플로팅 배너 및 파티클 효과
+       ========================================================== */
+    function showFeedback(text, isSuccess) {
+      feedbackBannerEl.textContent = text;
+      feedbackBannerEl.className = `absolute pointer-events-none transition-all duration-300 transform px-6 py-3 rounded-2xl font-black text-xl shadow-2xl flex items-center gap-2 z-30 ${
+        isSuccess 
+          ? 'bg-emerald-500/90 text-white border-2 border-emerald-300 scale-100 opacity-100 -translate-y-4' 
+          : 'bg-rose-600/90 text-white border-2 border-rose-300 scale-100 opacity-100 translate-y-2'
+      }`;
+
+      setTimeout(() => {
+        feedbackBannerEl.classList.remove('scale-100', 'opacity-100', '-translate-y-4', 'translate-y-2');
+        feedbackBannerEl.classList.add('scale-75', 'opacity-0');
+      }, 900);
+    }
+
+    function triggerConfettiMini() {
+      try {
+        confetti({
+          particleCount: 35,
+          spread: 60,
+          origin: { y: 0.65 },
+          colors: ['#f59e0b', '#10b981', '#ec4899', '#6366f1']
+        });
+      } catch (e) {}
+    }
+
+    /* ==========================================================
+       8. 게임 상호작용 로직
+       ========================================================== */
+    function handleBlockClick(index) {
+      if (!isGameRunning || isProcessing) return;
+
+      // 이미 선택된 블록 클릭 시 선택 해제
+      if (selectedIndices.includes(index)) {
+        selectedIndices = selectedIndices.filter(i => i !== index);
+        playSound('click');
+        renderBoard();
+        return;
+      }
+
+      if (selectedIndices.length < 3) {
+        selectedIndices.push(index);
+        playSound('click');
+        renderBoard();
+
+        // 3개가 다 모였으면 판정
+        if (selectedIndices.length === 3) {
+          evaluateSelection();
+        }
+      }
+    }
+
+    function evaluateSelection() {
+      isProcessing = true;
+      const idxs = [...selectedIndices];
+      const nums = idxs.map(i => board[i].value);
+      const isMatch = checkPythagorean(nums[0], nums[1], nums[2]);
+
+      const sorted = [...nums].sort((a, b) => a - b);
+      const formulaStr = `${sorted[0]}² + ${sorted[1]}² = ${sorted[2]}²`;
+
+      if (isMatch) {
+        // ---- 정답 처리 ----
+        combo++;
+        if (combo > maxCombo) maxCombo = combo;
+        matchCount++;
+
+        // 콤보 보너스 배수: 기본 1.0, 콤보당 +0.2 (최대 3.0배)
+        const multiplier = Math.min(3.0, 1 + (combo - 1) * 0.2);
+        const gainedScore = Math.round(100 * multiplier);
+        score += gainedScore;
+
+        if (combo >= 2) {
+          playSound('combo');
+          showFeedback(`✨ 대박 콤보! +${gainedScore}점 (${formulaStr})`, true);
+        } else {
+          playSound('success');
+          showFeedback(`🎉 정답 팡! +${gainedScore}점 (${formulaStr})`, true);
+        }
+        triggerConfettiMini();
+
+        // 선택된 버튼들에 파괴 애니메이션 적용
+        idxs.forEach(idx => {
+          const btn = gameBoardEl.children[idx];
+          if (btn) btn.classList.add('block-pop-anim');
+        });
+
+        setTimeout(() => {
+          // 깨진 3자리에는 새로운 피타고라스 조합 1세트(3개)를 75% 확률로 바로 보충!
+          const newIndices = [];
+          const injectFullTriplet = Math.random() < 0.75;
+          const freshTriplet = injectFullTriplet ? getRandomElement(PYTHAGOREAN_TRIPLETS) : null;
+
+          idxs.forEach((idx, i) => {
+            const nextVal = freshTriplet ? freshTriplet[i] : getRandomElement(VALID_NUMBERS);
+            board[idx] = {
+              id: 'blk_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substr(2, 4),
+              value: nextVal
+            };
+            newIndices.push(idx);
+          });
+
+          // 보드 상에 맞출 수 있는 조합이 3개 미만이면 자동으로 세트 주입
+          ensureBoardHasMatches();
+
+          selectedIndices = [];
+          isProcessing = false;
+          updateDashboard();
+          renderBoard(newIndices);
+        }, 360);
+
+      } else {
+        // ---- 오답 처리 ----
+        combo = 0;
+        const penalty = 50;
+        score = Math.max(0, score - penalty);
+        playSound('error');
+        showFeedback(`❌ 피타고라스 수가 아닙니다! (-${penalty}점)`, false);
+
+        // 오답 블록 흔들림 애니메이션
+        idxs.forEach(idx => {
+          const btn = gameBoardEl.children[idx];
+          if (btn) btn.classList.add('shake-anim');
+        });
+
+        setTimeout(() => {
+          selectedIndices = [];
+          isProcessing = false;
+          updateDashboard();
+          renderBoard();
+        }, 450);
+      }
+    }
+
+    // 보드 위에 완성 가능한 조합이 적어지면 무작위 조합 1세트를 보드에 강제 주입
+    function ensureBoardHasMatches() {
+      let matches = findPossibleTripletsOnBoard();
+      // 가능한 조합이 2개 이하로 떨어지면 무조건 1세트 즉각 보충
+      if (matches.length <= 2) {
+        const trip = getRandomElement(PYTHAGOREAN_TRIPLETS);
+        const randomSpots = [0, 1, 2, 3, 4, 5, 6, 7, 8].sort(() => Math.random() - 0.5).slice(0, 3);
+        trip.forEach((val, i) => {
+          board[randomSpots[i]].value = val;
+        });
+      }
+    }
+
+    /* ==========================================================
+       9. 힌트 및 셔플 기능
+       ========================================================== */
+    document.getElementById('hintBtn').addEventListener('click', () => {
+      if (!isGameRunning || isProcessing) return;
+      if (hintCount <= 0) {
+        showFeedback('💡 남은 힌트가 없습니다!', false);
+        return;
+      }
+
+      const matches = findPossibleTripletsOnBoard();
+      if (matches.length === 0) {
+        shuffleBoard();
+        showFeedback('가능한 조합이 없어 자동 셔플되었습니다!', true);
+        return;
+      }
+
+      hintCount--;
+      updateDashboard();
+
+      // 찾은 조합 중 하나를 골라 보드 상에서 해당 블록 3개를 강조 펄스
+      const targetTriplet = getRandomElement(matches);
+      const highlightedIndices = [];
+      const tempBoardValues = board.map((c, i) => ({ val: c.value, idx: i }));
+
+      targetTriplet.forEach(targetVal => {
+        const found = tempBoardValues.find(item => item.val === targetVal && !highlightedIndices.includes(item.idx));
+        if (found) {
+          highlightedIndices.push(found.idx);
+        }
+      });
+
+      // 힌트 블록들을 2초간 번쩍이게 강조
+      highlightedIndices.forEach(idx => {
+        const btn = gameBoardEl.children[idx];
+        if (btn) {
+          btn.classList.add('ring-4', 'ring-yellow-300', 'animate-pulse');
+        }
+      });
+
+      showFeedback(`힌트: (${targetTriplet.join(', ')}) 조합을 찾아보세요!`, true);
+
+      setTimeout(() => {
+        highlightedIndices.forEach(idx => {
+          const btn = gameBoardEl.children[idx];
+          if (btn) {
+            btn.classList.remove('ring-4', 'ring-yellow-300', 'animate-pulse');
+          }
+        });
+      }, 2000);
+    });
+
+    function shuffleBoard() {
+      // 현재 값들을 섞기
+      for (let i = board.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const temp = board[i];
+        board[i] = board[j];
+        board[j] = temp;
+      }
+      ensureBoardHasMatches();
+      selectedIndices = [];
+      renderBoard(Array.from({ length: 25 }, (_, i) => i));
+    }
+
+    document.getElementById('shuffleBtn').addEventListener('click', () => {
+      if (!isGameRunning || isProcessing) return;
+      if (shuffleCount <= 0) {
+        showFeedback('🔀 남은 셔플이 없습니다!', false);
+        return;
+      }
+      shuffleCount--;
+      updateDashboard();
+      shuffleBoard();
+      playSound('click');
+      showFeedback('보드를 새로 섞었습니다!', true);
+    });
+
+    /* ==========================================================
+       10. 타이머 및 게임 루프 관리
+       ========================================================== */
+    function startGame() {
+      // 오디오 컨텍스트 활성화
+      initAudio();
+      if (Tone.context.state !== 'running') {
+        Tone.start();
+      }
+
+      // 상태 초기화
+      score = 0;
+      combo = 0;
+      maxCombo = 0;
+      matchCount = 0;
+      timeLeft = GAME_DURATION;
+      hintCount = 3;
+      shuffleCount = 2;
+      selectedIndices = [];
+      isProcessing = false;
+      isGameRunning = true;
+
+      // 모달 닫기
+      document.getElementById('startModal').classList.add('hidden');
+      document.getElementById('gameOverModal').classList.add('hidden');
+
+      // 보드 초기화
+      generateBoard();
+      updateDashboard();
+      renderBoard(Array.from({ length: 25 }, (_, i) => i));
+
+      // 타이머 시작
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        timeLeft--;
+        updateDashboard();
+
+        if (timeLeft <= 0) {
+          endGame();
+        }
+      }, 1000);
+    }
+
+    function endGame() {
+      isGameRunning = false;
+      clearInterval(timerInterval);
+
+      // 최종 통계 반영
+      document.getElementById('finalScoreVal').textContent = `${score.toLocaleString()} 점`;
+      document.getElementById('finalMatchCount').textContent = matchCount;
+      document.getElementById('finalMaxCombo').textContent = maxCombo;
+
+      document.getElementById('saveMsg').classList.add('hidden');
+      document.getElementById('saveScoreBtn').disabled = false;
+      document.getElementById('nicknameInput').value = '';
+
+      // 게임오버 모달 노출
+      document.getElementById('gameOverModal').classList.remove('hidden');
+
+      // 환호 축하 파티클
+      try {
+        confetti({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.5 }
+        });
+      } catch (e) {}
+    }
+
+    /* ==========================================================
+       11. 명예의 전당 (LocalStorage 기반)
+       ========================================================== */
+    const STORAGE_KEY = 'pythagoras_block_pang_hall_of_fame';
+
+    function getScores() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) {
+          // 초기 기본 가상 랭커 데이터 (재미와 동기부여를 위한 기본값)
+          return [
+            { name: '피타고라스', score: 2800, date: '2026-05-01' },
+            { name: '직각장인', score: 2150, date: '2026-05-02' },
+            { name: '수학만점중2', score: 1800, date: '2026-05-03' },
+            { name: '빗변수호자', score: 1400, date: '2026-05-04' },
+            { name: '삼각비마스터', score: 950, date: '2026-05-05' }
+          ];
+        }
+        return JSON.parse(raw);
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveScore(name, finalScore) {
+      const scores = getScores();
+      const today = new Date().toISOString().split('T')[0];
+      scores.push({ name: name || '무명수학자', score: finalScore, date: today });
+      // 내림차순 정렬 후 상위 10개 보존
+      scores.sort((a, b) => b.score - a.score);
+      const top10 = scores.slice(0, 10);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(top10));
+      } catch (e) {}
+      return top10;
+    }
+
+    function renderLeaderboard() {
+      const listEl = document.getElementById('leaderboardList');
+      const scores = getScores();
+      listEl.innerHTML = '';
+
+      if (scores.length === 0) {
+        listEl.innerHTML = '<div class="text-center text-slate-400 py-8 text-sm">아직 등록된 기록이 없습니다.<br>첫 번째 주인공이 되어보세요!</div>';
+        return;
+      }
+
+      scores.forEach((entry, idx) => {
+        const item = document.createElement('div');
+        let medal = '';
+        let badgeColor = 'bg-slate-800 border-white/10 text-white';
+
+        if (idx === 0) {
+          medal = '🥇';
+          badgeColor = 'bg-amber-500/20 border-amber-400/50 text-amber-200';
+        } else if (idx === 1) {
+          medal = '🥈';
+          badgeColor = 'bg-slate-300/20 border-slate-300/50 text-slate-100';
+        } else if (idx === 2) {
+          medal = '🥉';
+          badgeColor = 'bg-amber-700/20 border-amber-600/50 text-amber-300';
+        } else {
+          medal = `<span class="font-mono text-xs text-indigo-300">${idx + 1}위</span>`;
+        }
+
+        item.className = `flex items-center justify-between p-2.5 rounded-2xl border ${badgeColor} transition hover:bg-white/5`;
+        item.innerHTML = `
+          <div class="flex items-center gap-2.5">
+            <div class="w-7 text-center text-base">${medal}</div>
+            <div>
+              <div class="font-black text-sm text-white">${escapeHtml(entry.name)}</div>
+              <div class="text-[10px] text-indigo-300/70">${entry.date || ''}</div>
+            </div>
+          </div>
+          <div class="font-black text-base font-mono text-emerald-400">${entry.score.toLocaleString()} 점</div>
+        `;
+        listEl.appendChild(item);
+      });
+    }
+
+    function escapeHtml(string) {
+      const div = document.createElement('div');
+      div.innerText = string;
+      return div.innerHTML;
+    }
+
+    // 닉네임 등록 버튼 이벤트
+    document.getElementById('saveScoreBtn').addEventListener('click', () => {
+      const input = document.getElementById('nicknameInput');
+      const name = input.value.trim() || '이등변';
+      saveScore(name, score);
+      document.getElementById('saveMsg').classList.remove('hidden');
+      document.getElementById('saveScoreBtn').disabled = true;
+    });
+
+    // 랭킹 모달 열기/닫기
+    const leaderboardModal = document.getElementById('leaderboardModal');
+    function openLeaderboard() {
+      renderLeaderboard();
+      leaderboardModal.classList.remove('hidden');
+    }
+    function closeLeaderboard() {
+      leaderboardModal.classList.add('hidden');
+    }
+
+    document.getElementById('showLeaderboardBtn').addEventListener('click', openLeaderboard);
+    document.getElementById('openLeaderboardFromOverBtn').addEventListener('click', openLeaderboard);
+    document.getElementById('closeLeaderboardBtn').addEventListener('click', closeLeaderboard);
+    document.getElementById('closeLeaderboardBtnBottom').addEventListener('click', closeLeaderboard);
+
+    // 기록 초기화 (confirm 창 제거 후 안전 모달 박스로 처리)
+    const resetConfirmBox = document.getElementById('resetConfirmBox');
+    document.getElementById('resetLeaderboardBtn').addEventListener('click', () => {
+      resetConfirmBox.classList.remove('hidden');
+    });
+    document.getElementById('cancelResetBtn').addEventListener('click', () => {
+      resetConfirmBox.classList.add('hidden');
+    });
+    document.getElementById('confirmResetBtn').addEventListener('click', () => {
+      localStorage.removeItem(STORAGE_KEY);
+      renderLeaderboard();
+      resetConfirmBox.classList.add('hidden');
+    });
+
+    // 규칙 모달 열기/닫기
+    const ruleModal = document.getElementById('ruleModal');
+    document.getElementById('ruleModalBtn').addEventListener('click', () => ruleModal.classList.remove('hidden'));
+    document.getElementById('closeRuleModalBtn').addEventListener('click', () => ruleModal.classList.add('hidden'));
+    document.getElementById('closeRuleModalBtnBottom').addEventListener('click', () => ruleModal.classList.add('hidden'));
+
+    // 사운드 토글
+    const soundToggleBtn = document.getElementById('soundToggleBtn');
+    soundToggleBtn.addEventListener('click', () => {
+      soundEnabled = !soundEnabled;
+      soundToggleBtn.textContent = soundEnabled ? '🔊' : '🔇';
+    });
+
+    // 게임 시작 및 재도전 버튼
+    document.getElementById('startGameBtn').addEventListener('click', startGame);
+    document.getElementById('restartGameBtn').addEventListener('click', startGame);
+
+    // 초기 화면 로드 시 보드 미리보기 렌더링
+    window.addEventListener('DOMContentLoaded', () => {
+      generateBoard();
+      renderBoard();
+      updateDashboard();
+    });
+  </script>
+</body>
+</html>
